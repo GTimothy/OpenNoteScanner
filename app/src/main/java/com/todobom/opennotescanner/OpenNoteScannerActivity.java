@@ -44,10 +44,12 @@ import android.widget.Toast;
 
 import com.github.fafaldo.fabtoolbar.widget.FABToolbarLayout;
 import com.todobom.opennotescanner.helpers.AboutFragment;
+import com.todobom.opennotescanner.helpers.CameraHandler;
 import com.todobom.opennotescanner.helpers.CustomOpenCVLoader;
 import com.todobom.opennotescanner.helpers.OpenNoteMessage;
 import com.todobom.opennotescanner.helpers.PreviewFrame;
 import com.todobom.opennotescanner.helpers.ScannedDocument;
+
 import com.todobom.opennotescanner.views.HUDCanvasView;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -69,7 +71,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.List;
 
 import static com.todobom.opennotescanner.helpers.Utils.addImageToGallery;
 import static com.todobom.opennotescanner.helpers.Utils.decodeSampledBitmapFromUri;
@@ -138,15 +139,14 @@ public class OpenNoteScannerActivity extends AppCompatActivity
     private static final String TAG = "OpenNoteScannerActivity";
     private MediaPlayer _shootMP = null;
 
-    private boolean safeToTakePicture;
     private Button scanDocButton;
     private HandlerThread mImageThread;
     private ImageProcessor mImageProcessor;
     private SurfaceHolder mSurfaceHolder;
-    private Camera mCamera;
+    private CameraHandler mCameraHandler;
     private OpenNoteScannerActivity mThis;
 
-    private boolean mFocused;
+    private boolean mFocused=true;
     private HUDCanvasView mHud;
     private View mWaitSpinner;
     private FABToolbarLayout mFabToolbar;
@@ -162,12 +162,8 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         this.imageProcessorBusy = imageProcessorBusy;
     }
 
-    public void setAttemptToFocus(boolean attemptToFocus) {
-        this.attemptToFocus = attemptToFocus;
-    }
 
     private boolean imageProcessorBusy=true;
-    private boolean attemptToFocus = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -208,11 +204,11 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         display.getRealSize(size);
 
         scanDocButton = (Button) findViewById(R.id.scanDocButton);
-
         scanDocButton.setOnClickListener(new View.OnClickListener() {
 
             @Override
             public void onClick(View v) {
+                Log.d("OpenNoteScannerActivity", "scanDocButton onClickListener triggered");
                 if (scanClicked) {
                     requestPicture();
                     scanDocButton.setBackgroundTintList(null);
@@ -280,7 +276,7 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
             @Override
             public void onClick(View v) {
-                mFlashMode = setFlash(!mFlashMode);
+                mFlashMode = mCameraHandler.setFlash(!mFlashMode);
                 ((ImageView)v).setColorFilter(mFlashMode ? 0xFFFFFFFF : 0xFFA0F0A0);
 
             }
@@ -339,18 +335,6 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
     }
 
-    public boolean setFlash(boolean stateFlash) {
-        PackageManager pm = getPackageManager();
-        if (pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH)) {
-            Camera.Parameters par = mCamera.getParameters();
-            par.setFlashMode(stateFlash ? Camera.Parameters.FLASH_MODE_TORCH : Camera.Parameters.FLASH_MODE_OFF);
-            mCamera.setParameters(par);
-            Log.d(TAG, "flash: " + (stateFlash ? "on" : "off"));
-            return stateFlash;
-        }
-        return false;
-    }
-
     private void checkResumePermissions() {
         if (ContextCompat.checkSelfPermission( this,
                 Manifest.permission.CAMERA)
@@ -387,6 +371,7 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
         mSurfaceHolder.addCallback(this);
         mSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+
         // Set up a listener to trigger manual focus on touch
         mSurfaceView.setOnTouchListener(new View.OnTouchListener() {
             @Override
@@ -395,11 +380,12 @@ public class OpenNoteScannerActivity extends AppCompatActivity
                 if (event.getAction() == MotionEvent.ACTION_DOWN){
                     Log.d("OpenNoteScannerActivity", "OnTouchListener triggered, MotionEvent.ACTION_DOWN : " +
                             "manual autofocus");
-                    mCamera.autoFocus(null);
+                    mCameraHandler.oneFocusAttempt();
                 }
                 return true;
             }
         });
+
         mSurfaceView.setVisibility(SurfaceView.VISIBLE);
     }
 
@@ -584,66 +570,6 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         // FIXME: check disableView()
     }
 
-    public List<Camera.Size> getResolutionList() {
-        return mCamera.getParameters().getSupportedPreviewSizes();
-    }
-
-    public Camera.Size getMaxPreviewResolution() {
-        int maxWidth=0;
-        Camera.Size curRes=null;
-
-        mCamera.lock();
-
-        for ( Camera.Size r: getResolutionList() ) {
-            if (r.width>maxWidth) {
-                Log.d(TAG,"supported preview resolution: "+r.width+"x"+r.height);
-                maxWidth=r.width;
-                curRes=r;
-            }
-        }
-
-        return curRes;
-    }
-
-
-    public List<Camera.Size> getPictureResolutionList() {
-        return mCamera.getParameters().getSupportedPictureSizes();
-    }
-
-    public Camera.Size getMaxPictureResolution(float previewRatio) {
-        int maxPixels=0;
-        int ratioMaxPixels=0;
-        Camera.Size currentMaxRes=null;
-        Camera.Size ratioCurrentMaxRes=null;
-        for ( Camera.Size r: getPictureResolutionList() ) {
-            float pictureRatio = (float) r.width / r.height;
-            Log.d(TAG,"supported picture resolution: "+r.width+"x"+r.height+" ratio: "+pictureRatio);
-            int resolutionPixels = r.width * r.height;
-
-            if (resolutionPixels>ratioMaxPixels && pictureRatio == previewRatio) {
-                ratioMaxPixels=resolutionPixels;
-                ratioCurrentMaxRes=r;
-            }
-
-            if (resolutionPixels>maxPixels) {
-                maxPixels=resolutionPixels;
-                currentMaxRes=r;
-            }
-        }
-
-        boolean matchAspect = mSharedPref.getBoolean("match_aspect", true);
-
-        if (ratioCurrentMaxRes!=null && matchAspect) {
-
-            Log.d(TAG,"Max supported picture resolution with preview aspect ratio: "
-                    + ratioCurrentMaxRes.width+"x"+ratioCurrentMaxRes.height);
-            return ratioCurrentMaxRes;
-
-        }
-
-        return currentMaxRes;
-    }
-
 
     private int findBestCamera() {
         int cameraId = -1;
@@ -667,7 +593,9 @@ public class OpenNoteScannerActivity extends AppCompatActivity
     public void surfaceCreated(SurfaceHolder holder) {
         try {
             int cameraId = findBestCamera();
-            mCamera = Camera.open(cameraId);
+            mCameraHandler = new CameraHandler(cameraId,getPackageManager());
+            mFocused = true;//todo query dynamically
+
         }
 
         catch (RuntimeException e) {
@@ -675,12 +603,8 @@ public class OpenNoteScannerActivity extends AppCompatActivity
             return;
         }
 
-        Camera.Parameters param;
-        param = mCamera.getParameters();
 
-        Camera.Size pSize = getMaxPreviewResolution();
-        param.setPreviewSize(pSize.width, pSize.height);
-
+        Camera.Size pSize = mCameraHandler.getPreviewSize();
         float previewRatio = (float) pSize.width / pSize.height;
 
         Display display = getWindowManager().getDefaultDisplay();
@@ -731,101 +655,36 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         angleSouthWest.setLayoutParams(paramsSW);
 
 
-        Camera.Size maxRes = getMaxPictureResolution(previewRatio);
-        if ( maxRes != null) {
-            param.setPictureSize(maxRes.width, maxRes.height);
-            Log.d(TAG,"max supported picture resolution: " + maxRes.width + "x" + maxRes.height);
-        }
 
-        PackageManager pm = getPackageManager();
-        if (pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_AUTOFOCUS)) {
-            //following code prevents crash on newer tablets -jdl
-            List<String> focusModes = param.getSupportedFocusModes();
-            if (focusModes.contains("auto"))
-                param.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-
-            else if (focusModes.contains("continuous-picture"))
-                param.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
-            Log.d(TAG, "enabling autofocus");
-        } else {
-            mFocused = true;
-            Log.d(TAG, "autofocus not available");
-        }
-        if (pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_FLASH)) {
-            param.setFlashMode(mFlashMode ? Camera.Parameters.FLASH_MODE_TORCH : Camera.Parameters.FLASH_MODE_OFF);
-        }
-
-        mCamera.setParameters(param);
 
         mBugRotate = mSharedPref.getBoolean("bug_rotate", false);
 
         if (mBugRotate) {
-            mCamera.setDisplayOrientation(270);
+            mCameraHandler.setDisplayOrientation(270);
         } else {
-            mCamera.setDisplayOrientation(90);
+            mCameraHandler.setDisplayOrientation(90);
         }
 
         if (mImageProcessor != null) {
             mImageProcessor.setBugRotate(mBugRotate);
         }
-
-        try {
-            mCamera.setAutoFocusMoveCallback(new Camera.AutoFocusMoveCallback() {
-                @Override
-                public void onAutoFocusMoving(boolean start, Camera camera) {
-                    mFocused = !start;
-                    Log.d(TAG, "focusMoving: " + mFocused);
-                }
-            });
-        } catch (Exception e) {
-            Log.d(TAG, "failed setting AutoFocusMoveCallback");
-        }
-
-        // some devices doesn't call the AutoFocusMoveCallback - fake the
-        // focus to true at the start
-        mFocused = true;
-
-        safeToTakePicture = true;
-
     }
 
     @Override
     public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-        refreshCamera();
-    }
-
-    private void refreshCamera() {
-        try {
-            mCamera.stopPreview();
-        }
-
-        catch (Exception e) {
-        }
-
-        try {
-            mCamera.setPreviewDisplay(mSurfaceHolder);
-
-            mCamera.startPreview();
-            mCamera.setPreviewCallback(this);
-        }
-        catch (Exception e) {
-        }
+        if (mCameraHandler != null)
+            mCameraHandler.refreshCamera(this, this.mSurfaceHolder);
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
-        if (mCamera != null) {
-            mCamera.stopPreview();
-            mCamera.setPreviewCallback(null);
-            mCamera.release();
-            mCamera = null;
-        }
+        mCameraHandler.surfaceDestroyed();
     }
 
     @Override
     public void onPreviewFrame(byte[] data, Camera camera) {
+        Camera.Size pictureSize = mCameraHandler.getPreviewSize();
 
-        android.hardware.Camera.Size pictureSize = camera.getParameters().getPreviewSize();
 
         Log.d(TAG, "onPreviewFrame - received image " + pictureSize.width + "x" + pictureSize.height
                 + " focused: "+ mFocused +" imageprocessor: "+(imageProcessorBusy?"busy":"available"));
@@ -863,33 +722,19 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
     private ResetShutterColor resetShutterColor = new ResetShutterColor();
 
-    public boolean requestPicture() {
-        if (safeToTakePicture) {
+    public void requestPicture() {
+        if (mCameraHandler.isSafeToTakePicture()) {
             runOnUiThread(resetShutterColor);
-            safeToTakePicture = false;
-            mCamera.autoFocus(new Camera.AutoFocusCallback() {
-                @Override
-                public void onAutoFocus(boolean success, Camera camera) {
-                    if (attemptToFocus) {
-                        return;
-                    } else {
-                        attemptToFocus = true;
-                    }
-
-                    camera.takePicture(null,null,mThis);
-                }
-            });
-            return true;
+            mCameraHandler.loopUntilFocusedForPicture(this);
         }
-        return false;
     }
 
     @Override
     public void onPictureTaken(byte[] data, Camera camera) {
-
         shootSound();
 
-        android.hardware.Camera.Size pictureSize = camera.getParameters().getPictureSize();
+        android.hardware.Camera.Size pictureSize = mCameraHandler.getPictureSize();
+
 
         Log.d(TAG, "onPictureTaken - received image " + pictureSize.width + "x" + pictureSize.height);
 
@@ -900,7 +745,7 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         sendImageProcessorMessage("pictureTaken", mat);
 
         scanClicked = false;
-        safeToTakePicture = true;
+        mCameraHandler.setSafeToTakePicture(true);
 
     }
 
@@ -1005,7 +850,7 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         // Record goal "PictureTaken"
         ((OpenNoteScannerApplication) getApplication()).getTracker().trackGoal(1);
 
-        refreshCamera();
+        mCameraHandler.refreshCamera(this, this.mSurfaceHolder);
 
     }
 

@@ -165,7 +165,6 @@ public class ImageProcessor extends Handler {
         picture.release();
 
         mMainActivity.setImageProcessorBusy(false);
-        mMainActivity.setAttemptToFocus(false);
         mMainActivity.waitSpinnerInvisible();
     }
 
