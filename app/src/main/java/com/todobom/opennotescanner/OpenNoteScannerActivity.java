@@ -31,13 +31,7 @@ import android.support.v4.app.FragmentManager;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.Display;
-import android.view.MenuItem;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
-import android.view.View;
-import android.view.ViewGroup;
-import android.view.WindowManager;
+import android.view.*;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.Animation;
 import android.view.animation.AnimationSet;
@@ -393,7 +387,19 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
         mSurfaceHolder.addCallback(this);
         mSurfaceHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
-
+        // Set up a listener to trigger manual focus on touch
+        mSurfaceView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                Log.d("OpenNoteScannerActivity", "OnTouchListener triggered: "+event.getAction());
+                if (event.getAction() == MotionEvent.ACTION_DOWN){
+                    Log.d("OpenNoteScannerActivity", "OnTouchListener triggered, MotionEvent.ACTION_DOWN : " +
+                            "manual autofocus");
+                    mCamera.autoFocus(null);
+                }
+                return true;
+            }
+        });
         mSurfaceView.setVisibility(SurfaceView.VISIBLE);
     }
 
