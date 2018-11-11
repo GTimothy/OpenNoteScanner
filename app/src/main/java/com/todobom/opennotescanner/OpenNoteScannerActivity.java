@@ -733,7 +733,13 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
         PackageManager pm = getPackageManager();
         if (pm.hasSystemFeature(PackageManager.FEATURE_CAMERA_AUTOFOCUS)) {
-            param.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
+            //following code prevents crash on newer tablets -jdl
+            List<String> focusModes = param.getSupportedFocusModes();
+            if (focusModes.contains("auto"))
+                param.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+
+            else if (focusModes.contains("continuous-picture"))
+                param.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             Log.d(TAG, "enabling autofocus");
         } else {
             mFocused = true;
