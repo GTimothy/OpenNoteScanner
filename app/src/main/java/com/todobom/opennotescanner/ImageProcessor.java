@@ -29,14 +29,7 @@ import com.todobom.opennotescanner.helpers.ScannedDocument;
 import com.todobom.opennotescanner.helpers.Utils;
 import com.todobom.opennotescanner.views.HUDCanvasView;
 
-import org.opencv.core.Core;
-import org.opencv.core.CvType;
-import org.opencv.core.Mat;
-import org.opencv.core.MatOfPoint;
-import org.opencv.core.MatOfPoint2f;
-import org.opencv.core.Point;
-import org.opencv.core.Scalar;
-import org.opencv.core.Size;
+import org.opencv.core.*;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 
@@ -89,6 +82,8 @@ public class ImageProcessor extends Handler {
                 processPreviewFrame((PreviewFrame) obj.getObj());
             } else if ( command.equals("pictureTaken")) {
                 processPicture((Mat) obj.getObj());
+            } else if ( command.equals("picturesTaken")) {
+                processPictures((Mat[]) obj.getObj());
             } else if ( command.equals("colorMode")) {
                 colorMode=(Boolean) obj.getObj();
             } else if ( command.equals("filterMode")) {
@@ -168,6 +163,50 @@ public class ImageProcessor extends Handler {
         mMainActivity.waitSpinnerInvisible();
     }
 
+
+    public void processPictures( Mat[] pictures ) {
+        ScannedDocument doc=null;
+        double bestSharpness= Integer.MIN_VALUE;
+
+        for (int i=0; i< pictures.length; i++){
+            Mat picture = pictures[i];
+
+            Mat img = Imgcodecs.imdecode(picture, Imgcodecs.CV_LOAD_IMAGE_UNCHANGED);
+            picture.release();
+
+            Log.d(TAG, "processPicture - imported image " + img.size().width + "x" + img.size().height);
+
+            if (mBugRotate) {
+                Core.flip(img, img, 1);
+                Core.flip(img, img, 0);
+            }
+
+            ScannedDocument tempDoc=detectDocument(img);
+            double tempSharpness=getSharpness(tempDoc);
+
+            if (tempSharpness>bestSharpness){
+                doc=tempDoc;
+                bestSharpness=tempSharpness;
+            }
+        }
+        mMainActivity.saveDocument(doc);
+
+        doc.release();
+        mMainActivity.setImageProcessorBusy(false);
+        mMainActivity.waitSpinnerInvisible();
+    }
+
+    //based on https://stackoverflow.com/a/7768918 : using Laplacian filtering to get a sharpness score (variance of
+    // Laplacian).
+    private double getSharpness(ScannedDocument tempDoc){
+        Mat lap = tempDoc.processed.clone();
+        Imgproc.Laplacian(tempDoc.processed, lap, tempDoc.original.depth());
+        MatOfDouble mu = new MatOfDouble();
+        MatOfDouble sigma= new MatOfDouble();
+        Core.meanStdDev(lap,mu,sigma);
+        double s0= sigma.toArray()[0];
+        return s0*s0;
+    }
 
     private ScannedDocument detectDocument(Mat inputRgba) {
         ArrayList<MatOfPoint> contours = findContours(inputRgba);

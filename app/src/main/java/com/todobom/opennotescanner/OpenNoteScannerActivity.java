@@ -729,6 +729,10 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         }
     }
 
+    private int nbPics;
+    private boolean scanningMultiple=false;
+    private Mat[] mats;
+    private int picIndex=0;
     @Override
     public void onPictureTaken(byte[] data, Camera camera) {
         shootSound();
@@ -741,12 +745,34 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         Mat mat = new Mat(new Size(pictureSize.width, pictureSize.height), CvType.CV_8U);
         mat.put(0, 0, data);
 
-        setImageProcessorBusy(true);
-        sendImageProcessorMessage("pictureTaken", mat);
+        int multipleScans = Integer.parseInt(mSharedPref.getString("multiple_scans", "1"));
 
-        scanClicked = false;
-        mCameraHandler.setSafeToTakePicture(true);
-
+        Log.d(TAG,"MultipleScans setting = "+multipleScans);
+        if (multipleScans>1) { //when multiple scan number other than OFF (ie one unique scan) selected in settings
+            if (!scanningMultiple) { //if not in the middle of multiple scan sequence, start a sequence
+                scanningMultiple = true;
+                nbPics = multipleScans;
+                picIndex = 0;
+                mats = new Mat[nbPics];
+            }
+            if (picIndex < nbPics-1) {//not end of sequence
+                mats[picIndex] = mat;
+                picIndex++;
+                camera.takePicture(null, null, this);
+            } else {// end of sequence
+                mats[picIndex] = mat;
+                scanningMultiple = false;
+                setImageProcessorBusy(true);
+                sendImageProcessorMessage("picturesTaken", mats);
+                scanClicked = false;
+                mCameraHandler.setSafeToTakePicture(true);
+            }
+        }else{ //when multiple scan number selected is OFF (ie one unique scan) in settings
+            setImageProcessorBusy(true);
+            sendImageProcessorMessage("pictureTaken", mat);
+            scanClicked = false;
+            mCameraHandler.setSafeToTakePicture(true);
+        }
     }
 
     public void sendImageProcessorMessage(String messageText , Object obj ) {

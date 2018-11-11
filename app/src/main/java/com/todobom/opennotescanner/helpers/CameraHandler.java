@@ -176,6 +176,7 @@ public class CameraHandler {
 //    ===========================COMMANDS====================================
 
     public void takePicture(OpenNoteScannerActivity openNoteScannerActivity){
+        openNoteScannerActivity.setImageProcessorBusy(true);
         mCamera.takePicture(null, null, openNoteScannerActivity);
     }
 

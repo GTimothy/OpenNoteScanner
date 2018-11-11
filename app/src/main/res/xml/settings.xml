@@ -44,6 +44,14 @@
                     android:key="tag_magnet">
                 </EditTextPreference>
             </PreferenceScreen>
+            <ListPreference
+                    android:title="@string/multiple_scans"
+                    android:defaultValue="OFF"
+                    android:key="multiple_scans"
+                    android:entries="@array/multiple_scans_entries"
+                    android:entryValues="@array/multiple_scans_entry_values"
+                    android:summary="@string/multiple_scans_summary">
+            </ListPreference>
             <CheckBoxPreference
                 android:title="@string/match_aspect"
                 android:defaultValue="true"
