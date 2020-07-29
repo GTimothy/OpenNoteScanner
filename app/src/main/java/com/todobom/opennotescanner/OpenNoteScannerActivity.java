@@ -70,6 +70,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 
 import static com.todobom.opennotescanner.helpers.Utils.addImageToGallery;
@@ -782,19 +783,37 @@ public class OpenNoteScannerActivity extends AppCompatActivity
         mImageProcessor.sendMessage(msg);
     }
 
+//    ArrayList<Uri> fileUris;
+
     public void saveDocument(ScannedDocument scannedDocument) {
 
         Mat doc = (scannedDocument.processed != null) ? scannedDocument.processed : scannedDocument.original;
 
-        Intent intent = getIntent();
+        final Intent intent = getIntent();
+        Log.d(TAG,"intent : " + intent.toString());
+        Log.d(TAG,"intent : " + intent.getAction());
+        Log.d(TAG,"intent : " + intent.getType());
+        Log.d(TAG,"intent : " + intent.getPackage());
+        Log.d(TAG,"intent : " + intent.getCategories());
+
         String fileName;
         boolean isIntent = false;
         Uri fileUri = null;
         if (intent.getAction().equals("android.media.action.IMAGE_CAPTURE")) {
+//            if (fileUris==null){
+//                fileUris=(ArrayList<Uri>)intent.getParcelableArrayExtra(MediaStore.EXTRA_OUTPUT);
+//
+//            }
+            fileUri = ((Uri) intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT));
+            Log.d(TAG,"intent uri: " + fileUri.toString());
+//            intent.putExtra(MediaStore.EXTRA_OUTPUT)
+            fileUri = ((Uri) intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT));
+            Log.d(TAG,"intent uri: " + fileUri.toString());
             fileUri = ((Uri) intent.getParcelableExtra(MediaStore.EXTRA_OUTPUT));
             Log.d(TAG,"intent uri: " + fileUri.toString());
             try {
                 fileName = File.createTempFile("onsFile",".jpg", this.getCacheDir()).getPath();
+                Log.d(TAG, "filename:"+fileName);
             } catch (IOException e) {
                 e.printStackTrace();
                 return;
@@ -866,8 +885,34 @@ public class OpenNoteScannerActivity extends AppCompatActivity
 
         if (isIntent) {
             new File(fileName).delete();
-            setResult(RESULT_OK, intent);
-            finish();
+
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+            builder.setTitle("Image transfered");
+            builder.setMessage("Transfer another image ?");
+
+            builder.setPositiveButton("YES", new DialogInterface.OnClickListener() {
+
+                public void onClick(DialogInterface dialog, int which) {
+                    // Do nothing but close the dialog
+
+                    dialog.dismiss();
+                }
+            });
+
+            builder.setNegativeButton("NO", new DialogInterface.OnClickListener() {
+
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+
+                    setResult(RESULT_OK, intent);
+                    finish();
+                    dialog.dismiss();
+                }
+            });
+
+            AlertDialog alert = builder.create();
+            alert.show();
         } else {
             animateDocument(fileName,scannedDocument);
             addImageToGallery(fileName , this);
